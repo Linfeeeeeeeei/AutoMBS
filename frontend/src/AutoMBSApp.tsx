@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  * - Highlights: evidence spans highlighted within the note
  * - Mock mode: works without backend. Toggle off and set API Base to call POST /mbs-codes
  * - Developer console: view raw JSON request/response, export session
+ * - Inline title rename, duplicate current episode, delete per-row button on hover ("X")
  *
  * Team: Spartan
  */
@@ -18,7 +19,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 type Attachment = {
   name: string;
   type: string; // e.g., "text/plain", "application/pdf"
-  content: string; // base64 or plain text
+  content: string; // base64 or plain text (images as data URLs)
 };
 
 type EvidenceSpan = {
@@ -247,6 +248,10 @@ export default function AutoMBSApp() {
   const [lastRequest, setLastRequest] = useState<any>(null);
   const [lastResponse, setLastResponse] = useState<any>(null);
 
+  // Inline rename state
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(activeEpisode.title);
+
   useEffect(() => {
     localStorage.setItem("autombs_api_base", apiBase);
   }, [apiBase]);
@@ -257,7 +262,15 @@ export default function AutoMBSApp() {
 
   useEffect(() => {
     setNoteDraft(activeEpisode.noteText);
-  }, [activeEpisodeId]);
+    setTitleDraft(activeEpisode.title);
+  }, [activeEpisodeId, activeEpisode.title, activeEpisode.noteText]);
+
+  function saveTitle() {
+    const t = titleDraft.trim();
+    if (!t) return;
+    setEpisodes((arr) => arr.map((e) => (e.id === activeEpisodeId ? { ...e, title: t } : e)));
+    setEditingTitle(false);
+  }
 
   async function onSuggest() {
     const ep = episodes.find((e) => e.id === activeEpisodeId);
@@ -322,10 +335,12 @@ export default function AutoMBSApp() {
           };
           setEpisodes((arr) => [newEp, ...arr]);
           setActiveEpisodeId(newEp.id);
+          setMessages([]);
         } else {
           const newEp: Episode = { id: `ep-${uid()}`, title: file.name, noteText: text };
           setEpisodes((arr) => [newEp, ...arr]);
           setActiveEpisodeId(newEp.id);
+          setMessages([]);
         }
       } catch (e) {
         alert(`Could not parse file: ${e}`);
@@ -350,7 +365,101 @@ export default function AutoMBSApp() {
     URL.revokeObjectURL(url);
   }
 
+  // ---------- New Episode / Image / Duplicate / Delete ----------
   const inputFileRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  function newEpisode() {
+    const id = `ep-${uid()}`;
+    const newEp: Episode = {
+      id,
+      title: `Untitled ${new Date().toLocaleString()}`,
+      noteText: "",
+      attachments: [],
+    };
+    setEpisodes((arr) => [newEp, ...arr]);
+    setActiveEpisodeId(id);
+    setMessages([]);
+    setNoteDraft("");
+  }
+
+  function onUploadImage(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const dataUrl = String(reader.result || "");
+        setEpisodes((arr) =>
+          arr.map((e) =>
+            e.id === activeEpisodeId
+              ? {
+                  ...e,
+                  attachments: [
+                    ...(e.attachments || []),
+                    { name: file.name, type: file.type || "image/*", content: dataUrl },
+                  ],
+                }
+              : e
+          )
+        );
+      } catch (e) {
+        alert(`Could not read image: ${e}`);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeAttachment(idx: number) {
+    setEpisodes((arr) =>
+      arr.map((e) =>
+        e.id === activeEpisodeId
+          ? { ...e, attachments: (e.attachments || []).filter((_, i) => i !== idx) }
+          : e
+      )
+    );
+  }
+
+  function duplicateEpisode() {
+    const source = activeEpisode;
+    if (!source) return;
+    const id = `ep-${uid()}`;
+    const copy: Episode = {
+      id,
+      title: `Copy of ${source.title}`,
+      noteText: source.noteText,
+      attachments: source.attachments ? [...source.attachments] : [],
+      structured: source.structured ? JSON.parse(JSON.stringify(source.structured)) : undefined,
+    };
+    setEpisodes((arr) => [copy, ...arr]);
+    setActiveEpisodeId(id);
+    setMessages([]);
+    setNoteDraft(copy.noteText);
+  }
+
+  function deleteEpisode(epId: string) {
+    const ep = episodes.find((e) => e.id === epId);
+    if (!ep) return;
+    const isActive = epId === activeEpisodeId;
+    const ok = window.confirm(`Delete episode "${ep.title}"? This cannot be undone.`);
+    if (!ok) return;
+
+    setEpisodes((arr) => arr.filter((e) => e.id !== epId));
+
+    if (isActive) {
+      // pick the next available, otherwise create a blank one
+      const remaining = episodes.filter((e) => e.id !== epId);
+      if (remaining.length > 0) {
+        setActiveEpisodeId(remaining[0].id);
+        setNoteDraft(remaining[0].noteText);
+      } else {
+        const id = `ep-${uid()}`;
+        const newEp: Episode = { id, title: `Untitled ${new Date().toLocaleString()}`, noteText: "", attachments: [] };
+        setEpisodes([newEp]);
+        setActiveEpisodeId(id);
+        setNoteDraft("");
+      }
+      setMessages([]); // clear chat when switching after delete
+    }
+  }
 
   return (
     <div className="h-screen w-full bg-slate-50 text-slate-900 flex">
@@ -382,14 +491,38 @@ export default function AutoMBSApp() {
               {consoleOpen ? "Hide" : "Show"} Console
             </button>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="text-sm px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={newEpisode}
+            >
+              New Episode
+            </button>
             <button
               className="text-sm px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700"
               onClick={() => inputFileRef.current?.click()}
             >
               Upload Episode
             </button>
-            <input ref={inputFileRef} type="file" className="hidden" onChange={(e) => e.target.files && onUploadFile(e.target.files[0])} />
+            <input
+              ref={inputFileRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => e.target.files && onUploadFile(e.target.files[0])}
+            />
+            <button
+              className="text-sm px-3 py-1.5 rounded bg-sky-600 text-white hover:bg-sky-700"
+              onClick={() => imageInputRef.current?.click()}
+            >
+              Add Image
+            </button>
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => e.target.files && onUploadImage(e.target.files[0])}
+            />
             <button className="text-sm px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300" onClick={exportSession}>
               Export
             </button>
@@ -400,15 +533,27 @@ export default function AutoMBSApp() {
           <h2 className="px-2 py-2 text-xs font-semibold uppercase text-slate-500">Episodes</h2>
           <ul className="space-y-1">
             {episodes.map((ep) => (
-              <li key={ep.id}>
+              <li key={ep.id} className="group relative">
                 <button
-                  className={`w-full text-left px-3 py-2 rounded hover:bg-slate-100 ${
+                  className={`w-full text-left px-3 py-2 pr-10 rounded hover:bg-slate-100 transition ${
                     ep.id === activeEpisodeId ? "bg-slate-100 border-l-4 border-indigo-600" : ""
                   }`}
-                  onClick={() => setActiveEpisodeId(ep.id)}
+                  onClick={() => {
+                    setActiveEpisodeId(ep.id);
+                    setNoteDraft(ep.noteText);
+                    setMessages([]);
+                  }}
                 >
                   <div className="text-sm font-medium truncate">{ep.title}</div>
                   <div className="text-xs text-slate-500 truncate">{ep.noteText.slice(0, 80)}</div>
+                </button>
+                {/* Delete 'X' button shown on hover */}
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs rounded px-2 py-0.5 bg-rose-100 text-rose-700 opacity-0 group-hover:opacity-100 hover:bg-rose-200"
+                  title="Delete episode"
+                  onClick={(e) => { e.stopPropagation(); deleteEpisode(ep.id); }}
+                >
+                  X
                 </button>
               </li>
             ))}
@@ -421,7 +566,49 @@ export default function AutoMBSApp() {
         {/* Editor Bar */}
         <div className="px-4 py-3 border-b bg-white flex items-center gap-3">
           <div className="text-sm font-semibold">Editing:</div>
-          <div className="text-sm px-2 py-1 rounded bg-slate-100 border">{activeEpisode.title}</div>
+
+          {editingTitle ? (
+            <div className="flex items-center gap-2">
+              <input
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveTitle();
+                  if (e.key === 'Escape') { setEditingTitle(false); setTitleDraft(activeEpisode.title); }
+                }}
+                className="text-sm px-2 py-1 rounded border"
+                autoFocus
+              />
+              <button className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700" onClick={saveTitle}>
+                Save
+              </button>
+              <button className="text-xs px-2 py-1 rounded bg-slate-200 hover:bg-slate-300"
+                onClick={() => { setEditingTitle(false); setTitleDraft(activeEpisode.title); }}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              className="text-sm px-2 py-1 rounded bg-slate-100 border hover:bg-slate-200"
+              onClick={() => setEditingTitle(true)}
+              title="Click to rename"
+            >
+              {activeEpisode.title}
+            </button>
+          )}
+
+          <div className="flex items-center gap-2">
+            <button
+              className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => setEditingTitle(true)}
+            >
+              Rename
+            </button>
+            <button className="text-xs px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700" onClick={duplicateEpisode}>
+              Duplicate
+            </button>
+          </div>
+
           <div className="ml-auto flex items-center gap-3 text-sm">
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={showHighlights} onChange={(e) => setShowHighlights(e.target.checked)} />
@@ -456,6 +643,31 @@ export default function AutoMBSApp() {
               <div className="mt-4">
                 <h4 className="text-sm text-slate-600 mb-2">Rendered with highlights</h4>
                 <HighlightedNote text={noteDraft} messages={messages} show={showHighlights} />
+              </div>
+              <div className="mt-4">
+                <h4 className="text-sm text-slate-600 mb-2">Attachments</h4>
+                {activeEpisode.attachments && activeEpisode.attachments.length > 0 ? (
+                  <ul className="flex flex-wrap gap-3">
+                    {activeEpisode.attachments.map((att, idx) => (
+                      <li key={idx} className="border rounded p-2 bg-white">
+                        <div className="text-xs font-semibold truncate max-w-[200px]">{att.name}</div>
+                        {att.type.startsWith("image/") ? (
+                          <img src={att.content} alt={att.name} className="mt-1 h-24 w-auto object-contain rounded" />
+                        ) : (
+                          <div className="mt-1 text-xs text-slate-600">({att.type})</div>
+                        )}
+                        <button
+                          className="mt-2 text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200"
+                          onClick={() => removeAttachment(idx)}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-slate-500">No attachments yet.</p>
+                )}
               </div>
             </div>
           </section>
