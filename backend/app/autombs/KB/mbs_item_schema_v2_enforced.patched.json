@@ -1,0 +1,756 @@
+{
+  "$schema": "schema",
+  "title": "mbs.item.v2",
+  "type": "object",
+  "required": [
+    "$schema",
+    "item_number",
+    "group",
+    "effective_from",
+    "hard_gates",
+    "pricing_benefit",
+    "authority_refs",
+    "display",
+    "meta"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "mbs.item.v2"
+    },
+    "item_number": {
+      "type": "string"
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "group": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "effective_from": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "effective_to": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "hard_gates": {
+      "type": "object",
+      "required": [
+        "provider_roles_allowed",
+        "referral",
+        "setting_mode",
+        "service_requirements"
+      ],
+      "properties": {
+        "provider_roles_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "general_practitioner",
+              "non_gp_medical_practitioner",
+              "medical_practitioner",
+              "specialist",
+              "consultant_physician",
+              "consultant_psychiatrist",
+              "emergency_medicine_specialist",
+              "addiction_medicine_specialist",
+              "prescribed_medical_practitioner",
+              "participating_nurse_practitioner",
+              "optometrist",
+              "allied_health_practitioner"
+            ]
+          }
+        },
+        "patient_age": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "unit": {
+              "type": "string",
+              "enum": [
+                "years",
+                "months"
+              ]
+            },
+            "min": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min_inclusive": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "max": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "max_inclusive": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "verbatim": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "referral": {
+          "type": "object",
+          "required": [
+            "required"
+          ],
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "referrer_types": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "enum": [
+                  "referring_practitioner",
+                  "general_practitioner",
+                  "medical_practitioner",
+                  "participating_nurse_practitioner",
+                  "specialist",
+                  "consultant_physician",
+                  "optometrist"
+                ]
+              }
+            },
+            "validity_days": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "exceptions": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "setting_mode": {
+          "type": "object",
+          "properties": {
+            "locations_allowed": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "enum": [
+                  "consulting_rooms",
+                  "hospital",
+                  "recognised_emergency_department_private_hospital",
+                  "other_place",
+                  "racf"
+                ]
+              }
+            },
+            "hospital_episode": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "enum": [
+                  "admitted",
+                  "not_admitted",
+                  "either"
+                ]
+              }
+            },
+            "modes_allowed": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string",
+                "enum": [
+                  "in_person",
+                  "video",
+                  "phone"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "service_requirements": {
+          "type": "object",
+          "required": [
+            "components_required",
+            "components_prohibited"
+          ],
+          "properties": {
+            "components_required": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "components_prohibited": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "min_duration_minutes": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "max_duration_minutes": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "contiguous_time_required": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "time_conditions": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "after_hours",
+                  "urgent_window"
+                ]
+              },
+              "proportion_threshold": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "time_windows": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object"
+                }
+              },
+              "requires": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "prerequisites": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "association_bans": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "not_with_items": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "scope": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "same_day",
+                "same_occasion",
+                "same_site"
+              ]
+            },
+            "notes": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "inclusions": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "co_claim": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "must_co_claim_one_of": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "must_co_claim_any_of_groups": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "aftercare": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "without_aftercare_only": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "provider_roles_disallowed": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "enum": [
+              "general_practitioner",
+              "non_gp_medical_practitioner",
+              "medical_practitioner",
+              "specialist",
+              "consultant_physician",
+              "consultant_psychiatrist",
+              "emergency_medicine_specialist",
+              "addiction_medicine_specialist",
+              "prescribed_medical_practitioner",
+              "participating_nurse_practitioner",
+              "optometrist",
+              "allied_health_practitioner"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "soft_gates": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "pricing_benefit": {
+      "type": "object",
+      "required": [
+        "benefit_basis",
+        "emsn"
+      ],
+      "properties": {
+        "schedule_fee": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "benefit_basis": {
+          "type": "object",
+          "properties": {
+            "default": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "75_percent",
+                "85_percent",
+                "75_or_85_percent",
+                "75_or_100_percent",
+                "100_percent"
+              ]
+            }
+          },
+          "additionalProperties": true
+        },
+        "emsn": {
+          "type": "object",
+          "properties": {
+            "capped": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "cap_code": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "none",
+                "fixed",
+                "percentage"
+              ]
+            },
+            "cap_amount": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "cap_percentage": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "cap_maximum": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "derived_fee": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "frequency_caps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "same_day",
+              "same_occasion",
+              "per_course_of_treatment",
+              "per_12_months",
+              "per_calendar_year",
+              "per_episode",
+              "per_site",
+              "per_lifetime",
+              "rolling_window"
+            ]
+          },
+          "count": {
+            "type": "number"
+          },
+          "per": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "patient",
+              "provider",
+              "group",
+              "site"
+            ]
+          },
+          "per_provider": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "per_group": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "window_days": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "entity_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "scope",
+          "count"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "prohibitions": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "authority_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "anchor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "source"
+        ]
+      }
+    },
+    "display": {
+      "type": "object",
+      "properties": {
+        "description_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "derived_fee_original": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subgroup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subheading": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fee_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider_type_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "benefit_start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "description_version_from": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "benefit_amounts": {
+          "type": "object",
+          "properties": {
+            "benefit75": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "benefit85": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "benefit100": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "hard_gates": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "soft_gates": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pricing_benefit": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "field_evidence": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "consistency_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "extraction_notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

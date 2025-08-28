@@ -1,0 +1,573 @@
+{
+  "version": "1.0",
+  "generated_at_utc": "2025-08-26",
+  "notes": "Canonical enums + synonyms/regex to normalize MBS descriptors and note-extraction outputs.",
+  "provider_roles": {
+    "enum": [
+      "general_practitioner",
+      "non_gp_medical_practitioner",
+      "medical_practitioner",
+      "specialist",
+      "consultant_physician",
+      "consultant_psychiatrist",
+      "emergency_medicine_specialist",
+      "addiction_medicine_specialist",
+      "prescribed_medical_practitioner",
+      "participating_nurse_practitioner",
+      "optometrist",
+      "allied_health_practitioner",
+      "non_specialist"
+    ],
+    "synonyms": {
+      "general_practitioner": [
+        "general practitioner",
+        "gp",
+        "a general practitioner"
+      ],
+      "non_gp_medical_practitioner": [
+        "medical practitioner who is not a general practitioner",
+        "non-gp medical practitioner",
+        "group a1 disqualified general practitioner",
+        "disqualified gp"
+      ],
+      "medical_practitioner": [
+        "medical practitioner",
+        "mp"
+      ],
+      "specialist": [
+        "specialist",
+        "specialist in the practice of the specialist's specialty",
+        "specialist in the practice of the specialist’s specialty"
+      ],
+      "consultant_physician": [
+        "consultant physician",
+        "consultant physician in the practice of the consultant physician's specialty"
+      ],
+      "consultant_psychiatrist": [
+        "consultant psychiatrist",
+        "consultant physician in the specialty of psychiatry"
+      ],
+      "emergency_medicine_specialist": [
+        "emergency medicine specialist",
+        "facem",
+        "specialist emergency physician"
+      ],
+      "addiction_medicine_specialist": [
+        "addiction medicine specialist",
+        "specialist in addiction medicine"
+      ],
+      "prescribed_medical_practitioner": [
+        "prescribed medical practitioner",
+        "pmp"
+      ],
+      "participating_nurse_practitioner": [
+        "participating nurse practitioner",
+        "pnp"
+      ],
+      "optometrist": [
+        "optometrist"
+      ],
+      "allied_health_practitioner": [
+        "physiotherapist",
+        "podiatrist",
+        "exercise physiologist",
+        "dietitian",
+        "speech pathologist",
+        "psychologist",
+        "occupational therapist",
+        "audiologist",
+        "diabetes educator",
+        "osteopath"
+      ],
+      "non_specialist": [
+        "non-specialist",
+        "medical officer",
+        "resident",
+        "house officer",
+        "cmo",
+        "hmo",
+        "mo",
+        "hospital medical officer"
+      ]
+    }
+  },
+  "setting_vocab": {
+    "enum": [
+      "consulting_rooms",
+      "hospital",
+      "recognised_emergency_department_private_hospital",
+      "other_place",
+      "racf"
+    ],
+    "synonyms": {
+      "consulting_rooms": [
+        "consulting rooms",
+        "at consulting rooms",
+        "rooms"
+      ],
+      "hospital": [
+        "hospital",
+        "in hospital"
+      ],
+      "recognised_emergency_department_private_hospital": [
+        "recognised emergency department of a private hospital",
+        "recognised emergency department",
+        "private hospital emergency department",
+        "ed of a private hospital",
+        "private ed"
+      ],
+      "other_place": [
+        "a place other than consulting rooms or hospital",
+        "other than consulting rooms or hospital",
+        "other place"
+      ],
+      "racf": [
+        "residential aged care facility",
+        "racf"
+      ]
+    }
+  },
+  "mode_vocab": {
+    "enum": [
+      "in_person",
+      "video",
+      "phone"
+    ],
+    "synonyms": {
+      "in_person": [
+        "attendance",
+        "in person",
+        "at consulting rooms",
+        "at hospital"
+      ],
+      "video": [
+        "video attendance",
+        "video conference",
+        "by video conference"
+      ],
+      "phone": [
+        "telephone attendance",
+        "by telephone",
+        "by phone"
+      ]
+    }
+  },
+  "referral_vocab": {
+    "enum": [
+      "referring_practitioner",
+      "general_practitioner",
+      "medical_practitioner",
+      "participating_nurse_practitioner",
+      "specialist",
+      "consultant_physician",
+      "optometrist"
+    ],
+    "synonyms": {
+      "referring_practitioner": [
+        "referring practitioner",
+        "referrer"
+      ],
+      "general_practitioner": [
+        "general practitioner",
+        "gp"
+      ],
+      "medical_practitioner": [
+        "medical practitioner",
+        "mp"
+      ],
+      "participating_nurse_practitioner": [
+        "participating nurse practitioner",
+        "pnp"
+      ],
+      "specialist": [
+        "specialist"
+      ],
+      "consultant_physician": [
+        "consultant physician"
+      ],
+      "optometrist": [
+        "optometrist"
+      ]
+    }
+  },
+  "age_patterns": {
+    "notes": "Regex helpers to convert phrases into numeric bands with inclusivity.",
+    "patterns": [
+      {
+        "regex": "aged\\s+(\\d+)\\s+years?\\s+or\\s+over\\s+but\\s+under\\s+(\\d+)\\s+years?",
+        "map": {
+          "unit": "years",
+          "min": "$1",
+          "min_inclusive": true,
+          "max": "$2",
+          "max_inclusive": false
+        }
+      },
+      {
+        "regex": "aged\\s+(\\d+)\\s+years?\\s+or\\s+over",
+        "map": {
+          "unit": "years",
+          "min": "$1",
+          "min_inclusive": true,
+          "max": null,
+          "max_inclusive": null
+        }
+      },
+      {
+        "regex": "aged\\s+under\\s+(\\d+)\\s+years?",
+        "map": {
+          "unit": "years",
+          "min": null,
+          "min_inclusive": null,
+          "max": "$1",
+          "max_inclusive": false
+        }
+      },
+      {
+        "regex": "aged\\s+(\\d+)\\s+years?\\s+or\\s+younger",
+        "map": {
+          "unit": "years",
+          "min": null,
+          "min_inclusive": null,
+          "max": "$1",
+          "max_inclusive": true
+        }
+      },
+      {
+        "regex": "at\\s+least\\s+(\\d+)\\s+but\\s+under\\s+(\\d+)\\s+years?",
+        "map": {
+          "unit": "years",
+          "min": "$1",
+          "min_inclusive": true,
+          "max": "$2",
+          "max_inclusive": false
+        }
+      }
+    ],
+    "special_cases": [
+      {
+        "label": "<=9y",
+        "phrases": [
+          "aged 9 years or younger"
+        ],
+        "map": {
+          "unit": "years",
+          "min": null,
+          "min_inclusive": null,
+          "max": 9,
+          "max_inclusive": true
+        }
+      },
+      {
+        "label": "<=14y_with_dev_delay",
+        "phrases": [
+          "aged 14 years or younger with developmental delay"
+        ],
+        "map": {
+          "unit": "years",
+          "min": null,
+          "min_inclusive": null,
+          "max": 14,
+          "max_inclusive": true,
+          "extra_flag": "developmental_delay"
+        }
+      },
+      {
+        "label": ">=65y",
+        "phrases": [
+          "at least 65 years old",
+          "aged 65 years or over"
+        ],
+        "map": {
+          "unit": "years",
+          "min": 65,
+          "min_inclusive": true,
+          "max": null,
+          "max_inclusive": null
+        }
+      }
+    ]
+  },
+  "duration_patterns": {
+    "notes": "Convert duration bands into numeric min/max (exclusive for 'less than').",
+    "patterns": [
+      {
+        "regex": "lasting at least\\s+(\\d+)\\s+minutes?\\s+and\\s+less than\\s+(\\d+)\\s+minutes?",
+        "map": {
+          "min": "$1",
+          "max_exclusive": "$2"
+        }
+      },
+      {
+        "regex": "of more than\\s+(\\d+)\\s+minutes?\\s+in duration\\s+but\\s+not more than\\s+(\\d+)\\s+minutes?",
+        "map": {
+          "min_exclusive": "$1",
+          "max": "$2"
+        }
+      },
+      {
+        "regex": "lasting more than\\s+(\\d+)\\s+minutes?,?\\s+but\\s+not more than\\s+(\\d+)\\s+minutes?",
+        "map": {
+          "min_exclusive": "$1",
+          "max": "$2"
+        }
+      },
+      {
+        "regex": "not more than\\s+(\\d+)\\s+minutes?",
+        "map": {
+          "max": "$1"
+        }
+      },
+      {
+        "regex": "lasting at least\\s+(\\d+)\\s+minutes?",
+        "map": {
+          "min": "$1"
+        }
+      },
+      {
+        "regex": "for at least\\s+(\\d+)\\s+minutes?",
+        "map": {
+          "min": "$1"
+        }
+      },
+      {
+        "regex": "(\\d+)\\s*hours?",
+        "map": {
+          "min": {
+            "$mul": [
+              "$1",
+              60
+            ]
+          }
+        }
+      },
+      {
+        "regex": "(\\d+)h\\s*(\\d+)m",
+        "map": {
+          "min": {
+            "$sum": [
+              {
+                "$mul": [
+                  "$1",
+                  60
+                ]
+              },
+              "$2"
+            ]
+          }
+        }
+      },
+      {
+        "regex": "(\\d+)\\s*hr(s)?\\s*(\\d+)?\\s*min(s)?",
+        "map": {
+          "min": {
+            "$sum": [
+              {
+                "$mul": [
+                  "$1",
+                  60
+                ]
+              },
+              "$3"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "association_bans": {
+    "scope_enum": [
+      "same_day",
+      "same_occasion",
+      "same_site"
+    ],
+    "phrases": [
+      "other than a service to which item",
+      "not in association with a service to which item"
+    ]
+  },
+  "frequency_caps": {
+    "scope_enum": [
+      "same_day",
+      "same_occasion",
+      "per_course_of_treatment",
+      "per_12_months",
+      "per_calendar_year",
+      "per_episode",
+      "per_site",
+      "per_lifetime",
+      "rolling_window"
+    ],
+    "phrases": [
+      "once only on the same day",
+      "not exceeded N services in a calendar year",
+      "no more than N per course of treatment"
+    ]
+  },
+  "benefit_basis_enum": [
+    "75_percent",
+    "85_percent",
+    "75_or_85_percent",
+    "75_or_100_percent",
+    "100_percent"
+  ],
+  "emsn_cap_code_enum": [
+    "none",
+    "fixed",
+    "percentage"
+  ],
+  "specialty_vocab": {
+    "enum": [
+      "ophthalmology",
+      "psychiatry",
+      "anaesthesia",
+      "emergency_medicine",
+      "general_practice",
+      "palliative_medicine",
+      "obstetrics_and_gynaecology",
+      "cardiology",
+      "orthopaedic_surgery",
+      "general_surgery",
+      "urology",
+      "gastroenterology",
+      "dermatology",
+      "rheumatology",
+      "endocrinology",
+      "respiratory_medicine",
+      "nephrology",
+      "medical_oncology",
+      "radiation_oncology",
+      "neurology",
+      "neurosurgery",
+      "otolaryngology_head_and_neck_surgery",
+      "plastic_and_reconstructive_surgery"
+    ],
+    "synonyms": {
+      "ophthalmology": [
+        "ophthalmology",
+        "ophthalmologist"
+      ],
+      "psychiatry": [
+        "psychiatry",
+        "psychiatrist",
+        "consultant psychiatrist"
+      ],
+      "anaesthesia": [
+        "anaesthetic",
+        "anaesthetist",
+        "anesthesia"
+      ],
+      "emergency_medicine": [
+        "emergency medicine",
+        "emergency physician",
+        "facem"
+      ],
+      "general_practice": [
+        "general practice",
+        "general practitioner",
+        "gp"
+      ],
+      "palliative_medicine": [
+        "palliative medicine",
+        "palliative care"
+      ],
+      "obstetrics_and_gynaecology": [
+        "obstetrics and gynaecology",
+        "obstetrics & gynaecology",
+        "o&g"
+      ],
+      "cardiology": [
+        "cardiology",
+        "cardiologist"
+      ],
+      "orthopaedic_surgery": [
+        "orthopaedic surgery",
+        "orthopaedic surgeon",
+        "orthopedics"
+      ],
+      "general_surgery": [
+        "general surgery",
+        "general surgeon"
+      ],
+      "urology": [
+        "urology",
+        "urologist"
+      ],
+      "gastroenterology": [
+        "gastroenterology",
+        "gastroenterologist"
+      ],
+      "dermatology": [
+        "dermatology",
+        "dermatologist"
+      ],
+      "rheumatology": [
+        "rheumatology",
+        "rheumatologist"
+      ],
+      "endocrinology": [
+        "endocrinology",
+        "endocrinologist"
+      ],
+      "respiratory_medicine": [
+        "respiratory medicine",
+        "respiratory physician",
+        "pulmonology",
+        "pulmonologist"
+      ],
+      "nephrology": [
+        "nephrology",
+        "nephrologist"
+      ],
+      "medical_oncology": [
+        "medical oncology",
+        "medical oncologist"
+      ],
+      "radiation_oncology": [
+        "radiation oncology",
+        "radiation oncologist"
+      ],
+      "neurology": [
+        "neurology",
+        "neurologist"
+      ],
+      "neurosurgery": [
+        "neurosurgery",
+        "neurosurgeon"
+      ],
+      "otolaryngology_head_and_neck_surgery": [
+        "otolaryngology",
+        "ent",
+        "ear nose and throat"
+      ],
+      "plastic_and_reconstructive_surgery": [
+        "plastic surgery",
+        "plastic & reconstructive surgery"
+      ]
+    }
+  },
+  "co_claim_bundles": {
+    "emergency_attendance_ep": [
+      "5001",
+      "5004",
+      "5011",
+      "5012",
+      "5013",
+      "5014",
+      "5016",
+      "5017",
+      "5019"
+    ],
+    "emergency_attendance_gp": [
+      "5021",
+      "5022",
+      "5027",
+      "5030",
+      "5031",
+      "5032",
+      "5033",
+      "5035",
+      "5036"
+    ]
+  }
+}
