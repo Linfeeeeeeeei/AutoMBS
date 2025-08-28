@@ -849,19 +849,46 @@ function ProgressBar({ p }: { p?: number }) {
 }
 
 function HighlightedNote({ text, messages, show }: { text: string; messages: Message[]; show: boolean }) {
-  const spans = useMemo(() => collectEvidenceSpans(messages), [messages]);
-  if (!show || spans.length === 0) return (
-    <pre className="text-sm font-mono bg-slate-100 p-3 rounded whitespace-pre-wrap">{text}</pre>
-  );
+  const rawSpans = useMemo(() => collectEvidenceSpans(messages), [messages]);
+
+  // Merge/normalise spans so we don't duplicate text when multiple suggestions are made
+  const spans = useMemo(() => {
+    const len = text.length;
+    const items = (rawSpans || [])
+      .filter((s: any) => typeof s?.start === "number" && typeof s?.end === "number")
+      .map((s: any) => ({
+        start: Math.max(0, Math.min(len, s.start)),
+        end: Math.max(0, Math.min(len, s.end)),
+      }))
+      .filter((s) => s.start < s.end)
+      .sort((a, b) => (a.start - b.start) || (a.end - b.end));
+
+    const merged: Array<{ start: number; end: number }> = [];
+    for (const seg of items) {
+      const last = merged[merged.length - 1];
+      if (!last || seg.start > last.end) {
+        merged.push({ ...seg });
+      } else {
+        last.end = Math.max(last.end, seg.end); // merge overlaps/adjacent
+      }
+    }
+    return merged;
+  }, [rawSpans, text]);
+
+  if (!show || spans.length === 0)
+    return (
+      <pre className="text-sm font-mono bg-slate-100 p-3 rounded whitespace-pre-wrap">{text}</pre>
+    );
+
   const parts: Array<{ str: string; mark?: boolean }> = [];
   let i = 0;
-  const ordered = [...spans].sort((a, b) => a.start - b.start);
-  for (const sp of ordered) {
+  for (const sp of spans) {
     if (sp.start > i) parts.push({ str: text.slice(i, sp.start) });
-    parts.push({ str: text.slice(sp.start, Math.min(sp.end, text.length)), mark: true });
+    parts.push({ str: text.slice(sp.start, sp.end), mark: true });
     i = sp.end;
   }
   if (i < text.length) parts.push({ str: text.slice(i) });
+
   return (
     <pre className="text-sm font-mono bg-slate-100 p-3 rounded whitespace-pre-wrap">
       {parts.map((p, idx) => (
@@ -876,6 +903,22 @@ function HighlightedNote({ text, messages, show }: { text: string; messages: Mes
 }
 
 function collectEvidenceSpans(messages: Message[]): EvidenceSpan[] {
+  // Only use the latest assistant message to avoid accumulating duplicate highlights
+  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant") as Extract<Message, { role: "assistant" }> | undefined;
+  if (!lastAssistant) return [];
+  const spans: EvidenceSpan[] = [];
+  for (const s of lastAssistant.response.suggestions || []) {
+    for (const e of s.evidence || []) {
+      if (typeof e.start === "number" && typeof e.end === "number" && e.field === "noteText") {
+        spans.push({ ...e });
+      }
+    }
+  }
+  return spans;
+}
+
+// (Optional helper) gather evidence spans from ALL assistant messages (not used; kept for future toggles)
+function collectEvidenceSpansAll(messages: Message[]): EvidenceSpan[] {
   const spans: EvidenceSpan[] = [];
   for (const m of messages) {
     if (m.role === "assistant") {
@@ -908,4 +951,25 @@ function safeJson(obj: any) {
 
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
+}
+
+// --------------------------- Dev Self-Tests ----------------------------
+// These run only in dev to guard against regressions.
+if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV) {
+  try {
+    // slashJoin tests
+    console.assert(slashJoin('http://localhost:8000', '/mbs-codes') === 'http://localhost:8000/mbs-codes', 'slashJoin basic');
+    console.assert(slashJoin('http://localhost:8000/', '/mbs-codes') === 'http://localhost:8000/mbs-codes', 'slashJoin trims trailing slash');
+    console.assert(slashJoin('', '/x') === '/x', 'slashJoin empty base');
+
+    // collectEvidenceSpans uses only latest assistant
+    const msgs: Message[] = [
+      { id: '1', role: 'assistant', createdAt: new Date().toISOString(), forMessageId: 'u1', response: { suggestions: [{ item: 'A', description: '', confidence: 1, reasoning: '', evidence: [{ text: 'foo', start: 0, end: 3, field: 'noteText' }] }], raw_debug: {} } as any },
+      { id: '2', role: 'assistant', createdAt: new Date().toISOString(), forMessageId: 'u2', response: { suggestions: [{ item: 'B', description: '', confidence: 1, reasoning: '', evidence: [{ text: 'bar', start: 4, end: 7, field: 'noteText' }] }], raw_debug: {} } as any },
+    ];
+    const spans = collectEvidenceSpans(msgs);
+    console.assert(spans.length === 1 && spans[0].text === 'bar', 'collectEvidenceSpans should use latest assistant only');
+  } catch (e) {
+    console.warn('DEV self-tests failed:', e);
+  }
 }

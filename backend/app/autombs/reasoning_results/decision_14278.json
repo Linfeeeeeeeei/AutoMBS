@@ -1,0 +1,14 @@
+{
+  "item_number": "14278",
+  "item_description": "Application of chemical or physical restraint of a patient by a medical practitioner (except a specialist in the practice of the specialist’s specialty of emergency medicine) at a recognised emergency department of a private hospital",
+  "applicable": false,
+  "confidence": 0.0,
+  "rationale": "The note describes a concussion following a bicycle accident with reassurance and education, with no mention of any restraint being applied or required. The item requires application of a restraint, which is not evidenced in the note.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [],
+  "co_claim_hint": []
+}

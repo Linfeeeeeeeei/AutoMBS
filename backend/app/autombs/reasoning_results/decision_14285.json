@@ -1,0 +1,14 @@
+{
+  "item_number": "14285",
+  "item_description": "Emergent intubation, airway management or both of a patient that: (a) is treated in a recognised emergency department of a private hospital; (b) is not admitted; (c) requires emergent intubation or airway management; (d) is not undergoing a procedure that involves intubation or airway management as part of a surgical or anaesthetic intervention.",
+  "applicable": false,
+  "confidence": 0.0,
+  "rationale": "The note describes a concussion with reassurance and education, no mention of intubation or airway management, and no indication of emergent airway intervention.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [],
+  "co_claim_hint": []
+}

@@ -1,0 +1,16 @@
+{
+  "item_number": "14263",
+  "item_description": "Minor procedure on a patient by a specialist in the practice of the specialist’s specialty of emergency medicine at a recognised emergency department of a private hospital, in conjunction with an attendance on the patient by the specialist described in item 5001, 5004, 5011, 5012, 5013, 5014, 5016, 5017 or 5019 (Anaes.)",
+  "applicable": false,
+  "confidence": 0.1,
+  "rationale": "The note describes a concussion with reassurance and education, no procedure performed, and no evidence of a minor procedure by a specialist in emergency medicine. There is no mention of any procedure or intervention.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [],
+  "co_claim_hint": [
+    "pair with item 5001, 5004, 5011, 5012, 5013, 5014, 5016, 5017 or 5019 (Anaes.)"
+  ]
+}

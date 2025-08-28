@@ -1,0 +1,14 @@
+{
+  "item_number": "14283",
+  "item_description": "Anaesthesia services in emergency departments",
+  "applicable": false,
+  "confidence": 0.0,
+  "rationale": "The note describes a concussion with reassurance and education, no anaesthesia services were performed or mentioned. There is no evidence of any anaesthesia-related intervention or management.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [],
+  "co_claim_hint": []
+}

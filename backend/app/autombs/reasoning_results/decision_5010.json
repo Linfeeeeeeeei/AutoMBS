@@ -1,0 +1,17 @@
+{
+  "item_number": "5010",
+  "item_description": "Professional attendance (other than a service to which another item applies) at a residential aged care facility (racf) or consulting rooms, for an obvious problem characterised by the straightforward nature of the task.",
+  "applicable": false,
+  "confidence": 0.0,
+  "rationale": "The note describes a 11-year-old child presenting after a bicycle accident with concussion and minor injuries, with management limited to reassurance and education. There is no mention of a residential aged care facility or consulting rooms. The setting and clinical context do not align with the item's requirement of attendance at a racf or consulting rooms for an obvious problem in an aged care context.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Presented with headache and leg pain; no significant back pain.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [
+    "setting"
+  ],
+  "co_claim_hint": []
+}

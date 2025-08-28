@@ -1,0 +1,154 @@
+{
+  "$schema": "mbs.extractor_output.min.v3",
+  "note_id": null,
+  "patient_age_years": null,
+  "patient_age_evidence": [
+    {
+      "text": "",
+      "start": null,
+      "end": null
+    }
+  ],
+  "encounter_flags": {
+    "is_after_hours": {
+      "support": "explicit",
+      "value": null,
+      "evidence": [],
+      "rationale": null
+    },
+    "is_weekend": {
+      "support": "explicit",
+      "value": null,
+      "evidence": [],
+      "rationale": null
+    },
+    "is_public_holiday": {
+      "support": "explicit",
+      "value": null,
+      "evidence": [],
+      "rationale": null
+    }
+  },
+  "provider_role": {
+    "support": "explicit",
+    "role": null,
+    "evidence": [],
+    "rationale": null
+  },
+  "hard_gates_observed": {
+    "setting_locations": [
+      {
+        "support": "explicit",
+        "token": "hospital",
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ],
+        "rationale": null
+      }
+    ],
+    "components": [
+      {
+        "support": "explicit",
+        "label": "",
+        "normalized": null,
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ],
+        "rationale": null
+      }
+    ],
+    "durations": [
+      {
+        "support": "explicit",
+        "label": "",
+        "minutes": null,
+        "contiguous": null,
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ],
+        "rationale": null
+      }
+    ],
+    "aftercare_without_same_provider": {
+      "support": "explicit",
+      "value": null,
+      "evidence": [],
+      "rationale": null
+    },
+    "attendance_complexity": {
+      "support": "explicit",
+      "value": null,
+      "evidence": [],
+      "rationale": null
+    }
+  },
+  "summary": {
+    "key_points": [],
+    "diagnoses": [
+      {
+        "label": "",
+        "text": "",
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ]
+      }
+    ],
+    "procedures": [
+      {
+        "label": "",
+        "text": "",
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ]
+      }
+    ],
+    "imaging_orders": [
+      {
+        "label": "",
+        "text": "",
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ]
+      }
+    ],
+    "medications": [
+      {
+        "label": "",
+        "text": "",
+        "evidence": [
+          {
+            "text": "",
+            "start": null,
+            "end": null
+          }
+        ]
+      }
+    ],
+    "disposition": null,
+    "free_text": null
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "item_number": "14257",
+  "item_description": "Resuscitation of a patient provided for at least 2 hours, by a specialist in the practice of the specialist’s specialty of emergency medicine at a recognised emergency department of a private hospital, in conjunction with an attendance on the patient by the specialist described in item 5001, 5004, 5011, 5012, 5013, 5014, 5016, 5017 or 5019 (Anaes.)",
+  "applicable": false,
+  "confidence": 0.0,
+  "rationale": "The note describes a concussion following a bicycle accident with reassurance and education, no resuscitation, and no indication of prolonged emergency intervention. There is no evidence of resuscitation or any activity lasting at least 2 hours.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [
+    "setting"
+  ],
+  "co_claim_hint": [
+    "pair with item 5001, 5004, 5011, 5012, 5013, 5014, 5016, 5017 or 5019 (Anaes.)"
+  ]
+}

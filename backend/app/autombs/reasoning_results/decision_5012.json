@@ -1,0 +1,17 @@
+{
+  "item_number": "5012",
+  "item_description": "Professional attendance, on a patient aged 4 years or over but under 75 years old, at a recognised emergency department of a private hospital by a specialist in the practice of the specialist’s specialty of emergency medicine involving medical decision-making of complexity that is more than ordinary but is not high",
+  "applicable": true,
+  "confidence": 0.9,
+  "rationale": "The note documents a patient aged 11 years presenting to an emergency department with a bicycle accident, loss of consciousness, and physical findings, with management involving reassurance and education, consistent with medical decision-making of complexity more than ordinary but not high. The setting is inferred to be a recognised emergency department of a private hospital.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact.",
+    "Reported brief loss of consciousness, headache, and leg pain.",
+    "Physical findings: minor bruise on right knee, abrasion on hand and arm.",
+    "Impression: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion, advice to return to ED if concerns arise within 24-48 hours.",
+    "Vitals are normal; no significant back pain or other symptoms."
+  ],
+  "missing_requirements": [],
+  "co_claim_hint": []
+}

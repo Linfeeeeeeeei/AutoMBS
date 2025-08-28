@@ -1,0 +1,14 @@
+{
+  "item_number": "14258",
+  "item_description": "Resuscitation of a patient provided for at least 30 minutes but less than 1 hour, by a medical practitioner (except a specialist in the practice of the specialist’s specialty of emergency medicine) at a recognised emergency department of a private hospital, in conjunction with an attendance on the patient by the practitioner described in item 5021, 5022, 5027, 5030, 5031, 5032, 5033, 5035 or 5036 (Anaes.)",
+  "applicable": false,
+  "confidence": 0.0,
+  "rationale": "The note describes a patient with a bicycle accident and concussion, managed with reassurance and education, with no mention of resuscitation or emergency intervention. The service described in the candidate requires resuscitation for at least 30 minutes, which is not evidenced in the note.",
+  "citations": [
+    "Patient 11 years old with history of bicycle accident involving head and leg impact, with brief loss of consciousness.",
+    "Diagnosis: Likely concussion.",
+    "Management: Reassurance, education on short-term and long-term effects of concussion; advice to return to ED if concerns arise in next 24-48 hours."
+  ],
+  "missing_requirements": [],
+  "co_claim_hint": []
+}
