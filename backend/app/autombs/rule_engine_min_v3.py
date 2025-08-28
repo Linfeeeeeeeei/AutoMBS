@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Minimal hard-rule engine (v1) for MBS ED coding.
+Minimal hard-rule engine (v3) for MBS ED coding.
 
 Policy:
 - Hard checks now: age, duration (effective dates optional via flag)

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * AutoMBS — Spartan Team Minimal UI (No highlights, No mock mode)
+ * AutoMBS — Spartan Team Minimal UI
  * -------------------------------------------------
  * - Sidebar: API base, backend options, episode list (rename/duplicate/delete), upload episode/image
  * - Main: note editor + attachments, "Suggest Codes" button, results as chat cards
@@ -13,14 +13,14 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Attachment = {
   name: string;
-  type: string; // e.g., "text/plain", "application/pdf", "image/png"
-  content: string; // base64 or data URL for images; raw text for text files
+  type: string; //
+  content: string;
 };
 
 type EvidenceSpan = {
   text: string;
-  start?: number; // offset in noteText (optional if evidence refers to other fields)
-  end?: number;   // exclusive
+  start?: number; //
+  end?: number;   //
   field?: "noteText" | string;
 };
 

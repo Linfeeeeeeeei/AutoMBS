@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Minimal extractor tester for Qwen3:4b-instruct via Ollama.
+Extractor tester for Qwen3:4b-instruct via Ollama.
 
 Usage:
   python extractor_min_v2_test.py --note sample_note1.txt
