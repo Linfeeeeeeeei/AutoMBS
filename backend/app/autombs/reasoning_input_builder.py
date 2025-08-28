@@ -133,6 +133,20 @@ def get_requires_settings(pass_item: Dict[str, Any], kb_item: Optional[Dict[str,
         return sm.get("locations_allowed") or []
     return []
 
+# NEW: extract schedule_fee from KB (handles int/float/string)
+def get_schedule_fee(kb_item: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not kb_item: return None
+    pb = (kb_item.get("pricing_benefit") or {})
+    fee = pb.get("schedule_fee")
+    if isinstance(fee, (int, float)):
+        return float(fee)
+    if isinstance(fee, str):
+        try:
+            return float(fee.strip())
+        except Exception:
+            return None
+    return None
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--facts", required=True)
@@ -164,6 +178,12 @@ def main():
 
         candidate = {"item_number": item_no}
         if trimmed: candidate["description_original"] = trimmed
+
+        # NEW: schedule_fee from KB
+        if kb_idx:
+            fee = get_schedule_fee(kb_item)
+            if fee is not None:
+                candidate["schedule_fee"] = fee
 
         req_settings = get_requires_settings(p, kb_item)
         if req_settings: candidate["requires_setting_tokens"] = req_settings

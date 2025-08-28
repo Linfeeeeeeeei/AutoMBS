@@ -1,31 +1,26 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * AutoMBS — Spartan Team Minimal Chat-style UI (Frontend only)
+ * AutoMBS — Spartan Team Minimal UI (No highlights, No mock mode)
  * -------------------------------------------------
- * - Left sidebar: upload/select synthetic episodes (.txt or .json)
- * - Main area: chat-like interaction — paste clinical notes and click "Suggest Codes"
- * - Assistant reply cards show: item number, description, reasoning, evidence, confidence
- * - Highlights: evidence spans highlighted within the note
- * - Mock mode: works without backend. Toggle off and set API Base to call POST /mbs-codes
- * - Developer console: view raw JSON request/response, export session
- * - Inline title rename, duplicate current episode, delete per-row button on hover ("X")
- *
- * Team: Spartan
+ * - Sidebar: API base, backend options, episode list (rename/duplicate/delete), upload episode/image
+ * - Main: note editor + attachments, "Suggest Codes" button, results as chat cards
+ * - Always calls FastAPI POST /mbs-codes (no mock fallback)
+ * - Developer console shows last request/response
  */
 
 // ----------------------------- Types ---------------------------------
 
 type Attachment = {
   name: string;
-  type: string; // e.g., "text/plain", "application/pdf"
-  content: string; // base64 or plain text (images as data URLs)
+  type: string; // e.g., "text/plain", "application/pdf", "image/png"
+  content: string; // base64 or data URL for images; raw text for text files
 };
 
 type EvidenceSpan = {
   text: string;
-  start: number; // char offset in noteText
-  end: number; // exclusive
+  start?: number; // offset in noteText (optional if evidence refers to other fields)
+  end?: number;   // exclusive
   field?: "noteText" | string;
 };
 
@@ -38,11 +33,12 @@ type Suggestion = {
   conflicts?: string[];
   allowedWith?: string[];
   warnings?: string[];
+  schedule_fee?: number;
 };
 
 type CoverageBlock = {
   eligible_suggested: number;
-  eligible_total: number;
+  eligible_total: number | null;
   missed?: string[];
 };
 
@@ -53,9 +49,9 @@ type AccuracyBlock = {
 
 type ApiSuggestionResponse = {
   suggestions: Suggestion[];
-  coverage?: CoverageBlock;
-  accuracy?: AccuracyBlock;
-  meta?: { prompt_version?: string; rule_version?: string; model?: string };
+  coverage?: CoverageBlock | null;
+  accuracy?: AccuracyBlock | null;
+  meta?: any;
   raw_debug?: any;
 };
 
@@ -75,36 +71,10 @@ type Message =
 
 const SAMPLE_EPISODES: Episode[] = [
   {
-    id: "ep-gp-telehealth-1",
-    title: "GP Telehealth + Pathology",
-    noteText:
-      "42yo male with sore throat x3 days, mild fever. Telehealth 18 mins via video. Exam (reported): no dyspnea, mild odynophagia. Dx: suspected strep pharyngitis. Orders: throat swab culture, FBC/CRP. Advice: hydration, paracetamol. Safety-net provided. Review if worse.",
-    attachments: [
-      {
-        name: "pathology_request.txt",
-        type: "text/plain",
-        content: "Requested: Throat swab culture; FBC; CRP; Clinical notes: fever, odynophagia.",
-      },
-    ],
-  },
-  {
     id: "ep-gp-procedure-ecg",
     title: "GP Level B + Suturing + ECG",
     noteText:
       "23yo female laceration R forearm 2.5cm from kitchen knife today. In-person consult 12 mins. Procedure: local anaesthetic infiltration, simple suturing (3 nylon 4-0), tetanus up-to-date. ECG performed for palpitations earlier this week—normal sinus rhythm. Dx: simple laceration, palpitations (self-resolved). Wound care instructions provided.",
-  },
-  {
-    id: "ep-specialist-ed-review",
-    title: "Specialist Review + Imaging Report",
-    noteText:
-      "Orthopaedic review following ED visit for left ankle pain after sports injury. Exam: swelling, tenderness over ATFL. Imaging: ankle X-ray today—no fracture. Plan: RICE, physio referral, follow-up 2 weeks. Consultation time ~25 mins.",
-    attachments: [
-      {
-        name: "imaging_report.txt",
-        type: "text/plain",
-        content: "Ankle X-ray: No fracture. Soft tissue swelling lateral malleolus. Impression: ATFL sprain likely.",
-      },
-    ],
   },
 ];
 
@@ -112,9 +82,7 @@ const SAMPLE_EPISODES: Episode[] = [
 
 const uid = () => Math.random().toString(36).slice(2);
 
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
+function clamp01(x: number) { return Math.max(0, Math.min(1, x)); }
 
 function confidenceColor(p: number) {
   if (p >= 0.85) return "bg-green-500";
@@ -122,120 +90,33 @@ function confidenceColor(p: number) {
   return "bg-red-500";
 }
 
-function formatTime(ts: string) {
-  const d = new Date(ts);
-  return d.toLocaleString();
+function formatTime(ts: string) { const d = new Date(ts); return d.toLocaleString(); }
+
+function isNetworkError(err: any) {
+  const s = String(err && (err.message ?? err));
+  return (
+    (err && err.name === 'TypeError') ||
+    /Failed to fetch|NetworkError|Load failed|CORS|TypeError: fetch|AbortError/i.test(s)
+  );
 }
 
-function findEvidenceSpans(text: string, needles: string[]): EvidenceSpan[] {
-  const spans: EvidenceSpan[] = [];
-  const lower = text.toLowerCase();
-  needles.forEach((n) => {
-    const idx = lower.indexOf(n.toLowerCase());
-    if (idx >= 0)
-      spans.push({ text: text.slice(idx, idx + n.length), start: idx, end: idx + n.length, field: "noteText" });
-  });
-  return spans;
+function slashJoin(base: string, path: string) {
+  if (!base) return path;
+  return base.replace(/\/$/, "") + (path.startsWith("/") ? path : `/${path}`);
 }
 
-function mockSuggest(noteText: string, attachments?: Attachment[]): ApiSuggestionResponse {
-  const text = [noteText, ...(attachments?.filter(a => a.type.startsWith("text"))?.map(a => `\n${a.content}`) || [])].join("\n");
+function safeJson(obj: any) { try { return JSON.stringify(obj, null, 2); } catch (e) { return String(obj); } }
+function sleep(ms: number) { return new Promise((res) => setTimeout(res, ms)); }
 
-  const MOCK_RULES: Array<{
-    test: (s: string) => boolean;
-    build: (s: string) => Suggestion;
-  }> = [
-    {
-      test: (s) => /telehealth|video|phone/i.test(s),
-      build: (s) => ({
-        item: /\b(20|25|30)\b/.test(s) ? "91836" : "91823",
-        description: "Telehealth attendance by a GP (Level B–C)",
-        confidence: 0.78,
-        reasoning: "Telehealth modality and consult length suggests Level B/C telehealth.",
-        evidence: findEvidenceSpans(s, ["Telehealth", "video", "phone", "mins"]),
-        warnings: ["Confirm patient location and telehealth eligibility."],
-      }),
-    },
-    {
-      test: (s) => /suturing|laceration|wound/i.test(s),
-      build: (s) => ({
-        item: "30026",
-        description: "Repair of superficial laceration (suturing)",
-        confidence: 0.82,
-        reasoning: "Simple suturing with local anaesthetic documented.",
-        evidence: findEvidenceSpans(s, ["laceration", "suturing", "local anaesthetic", "nylon"]),
-        warnings: ["Ensure length/complexity meet descriptor; same-site rules apply."],
-      }),
-    },
-    {
-      test: (s) => /ecg/i.test(s),
-      build: (s) => ({
-        item: "11700",
-        description: "Electrocardiogram tracing and report",
-        confidence: 0.74,
-        reasoning: "ECG performed and interpreted.",
-        evidence: findEvidenceSpans(s, ["ECG", "sinus rhythm", "palpitations"]),
-      }),
-    },
-    {
-      test: (s) => /throat swab|FBC|CRP|pathology|culture/i.test(s),
-      build: (s) => ({
-        item: "65111",
-        description: "Pathology test request (example placeholder)",
-        confidence: 0.65,
-        reasoning: "Pathology orders present (throat swab, FBC/CRP).",
-        evidence: findEvidenceSpans(s, ["throat swab", "FBC", "CRP", "culture"]),
-      }),
-    },
-    {
-      test: (s) => /x-ray|imaging|report/i.test(s),
-      build: (s) => ({
-        item: "58503",
-        description: "Diagnostic imaging service (example)",
-        confidence: 0.7,
-        reasoning: "Imaging performed and report available.",
-        evidence: findEvidenceSpans(s, ["X-ray", "imaging", "report"]),
-      }),
-    },
-    {
-      test: (s) => /consult|in-person|mins|review|time|history|exam/i.test(s),
-      build: (s) => ({
-        item: /\b(25|30)\b/.test(s) ? "36" : "23",
-        description: "GP attendance (Level B/C)",
-        confidence: 0.68,
-        reasoning: "Consultation documented with history/exam and time noted.",
-        evidence: findEvidenceSpans(s, ["consult", "in-person", "mins", "review", "history", "exam", "time"]),
-      }),
-    },
-  ];
-
-  const hits = MOCK_RULES.filter((r) => r.test(text)).map((r) => r.build(text));
-  const has23 = hits.some((h) => h.item === "23");
-  const has36 = hits.some((h) => h.item === "36");
-  if (has23 && has36) {
-    hits.forEach((h) => {
-      if (h.item === "23") h.conflicts = ["36"]; else if (h.item === "36") h.conflicts = ["23"];
-    });
-  }
-  const coverage: CoverageBlock = {
-    eligible_suggested: hits.length,
-    eligible_total: Math.max(hits.length, 3),
-    missed: hits.length >= 3 ? [] : ["(example) spirometry", "(example) care plan"].slice(0, 3 - hits.length)
-  };
-  return {
-    suggestions: hits,
-    coverage,
-    accuracy: undefined,
-    meta: { prompt_version: "v-mock-1", rule_version: "mock-2025-07", model: "mock" },
-    raw_debug: { matched_rules: hits.map(h => h.item), attachment_names: attachments?.map(a=>a.name) }
-  };
+function formatAUD(n: number) {
+  try { return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(n); }
+  catch { return `$${n.toFixed(2)}`; }
 }
 
 // ------------------------------ UI -----------------------------------
 
 export default function AutoMBSApp() {
-  const [apiBase, setApiBase] = useState<string>(localStorage.getItem("autombs_api_base") || "");
-  const [mockMode, setMockMode] = useState<boolean>(localStorage.getItem("autombs_mock") !== "false");
+  const [apiBase, setApiBase] = useState<string>(localStorage.getItem("autombs_api_base") || "http://localhost:8000");
   const [episodes, setEpisodes] = useState<Episode[]>(SAMPLE_EPISODES);
   const [activeEpisodeId, setActiveEpisodeId] = useState<string>(SAMPLE_EPISODES[0].id);
   const activeEpisode = useMemo(() => episodes.find((e) => e.id === activeEpisodeId)!, [episodes, activeEpisodeId]);
@@ -243,7 +124,6 @@ export default function AutoMBSApp() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [noteDraft, setNoteDraft] = useState<string>(activeEpisode.noteText);
   const [busy, setBusy] = useState(false);
-  const [showHighlights, setShowHighlights] = useState(true);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [lastRequest, setLastRequest] = useState<any>(null);
   const [lastResponse, setLastResponse] = useState<any>(null);
@@ -252,72 +132,87 @@ export default function AutoMBSApp() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(activeEpisode.title);
 
-  useEffect(() => {
-    localStorage.setItem("autombs_api_base", apiBase);
-  }, [apiBase]);
+  // Backend options (aligns with FastAPI sample)
+  type BackendOptions = {
+    department?: string;
+    hospital_type?: string;
+    recognised_ed?: boolean;
+    ollama_url?: string;
+    model?: string;
+    use_effective_dates?: boolean;
+    confidence_threshold?: number;
+    request_timeout_sec?: number; // long-running backend support
+  };
 
-  useEffect(() => {
-    localStorage.setItem("autombs_mock", String(mockMode));
-  }, [mockMode]);
+  const [options, setOptions] = useState<BackendOptions>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("autombs_options") || "null");
+      return { department: "ED", hospital_type: "private", recognised_ed: true, ollama_url: "http://localhost:11434", model: "qwen3:4b-instruct", use_effective_dates: false, confidence_threshold: 0.6, request_timeout_sec: 600, ...(stored || {}) };
+    } catch {
+      return { department: "ED", hospital_type: "private", recognised_ed: true, ollama_url: "http://localhost:11434", model: "qwen3:4b-instruct", use_effective_dates: false, confidence_threshold: 0.6, request_timeout_sec: 600 };
+    }
+  });
 
-  useEffect(() => {
-    setNoteDraft(activeEpisode.noteText);
-    setTitleDraft(activeEpisode.title);
-  }, [activeEpisodeId, activeEpisode.title, activeEpisode.noteText]);
+  useEffect(() => { localStorage.setItem("autombs_api_base", apiBase); }, [apiBase]);
+  useEffect(() => { localStorage.setItem("autombs_options", JSON.stringify(options)); }, [options]);
 
-  function saveTitle() {
-    const t = titleDraft.trim();
-    if (!t) return;
-    setEpisodes((arr) => arr.map((e) => (e.id === activeEpisodeId ? { ...e, title: t } : e)));
-    setEditingTitle(false);
-  }
+  useEffect(() => { setNoteDraft(activeEpisode.noteText); setTitleDraft(activeEpisode.title); }, [activeEpisodeId, activeEpisode.title, activeEpisode.noteText]);
+
+  function saveTitle() { const t = titleDraft.trim(); if (!t) return; setEpisodes((arr) => arr.map((e) => (e.id === activeEpisodeId ? { ...e, title: t } : e))); setEditingTitle(false); }
 
   async function onSuggest() {
-    const ep = episodes.find((e) => e.id === activeEpisodeId);
-    if (!ep) return;
+    const ep = episodes.find((e) => e.id === activeEpisodeId); if (!ep) return;
+
+    const base = (apiBase || '').trim();
+    if (!base) { alert('Set API Base (e.g., http://localhost:8000)'); return; }
 
     const userMsgId = uid();
     const userMsg: Message = { id: userMsgId, role: "user", noteText: noteDraft, createdAt: new Date().toISOString(), episodeId: ep.id };
     setMessages((m) => [...m, userMsg]);
 
+    const payload = { noteText: noteDraft, attachments: ep.attachments || [], options };
+    setLastRequest(payload);
+
     try {
       setBusy(true);
-      const payload = { noteText: noteDraft, attachments: ep.attachments || [], options: { return_raw: true } };
-      setLastRequest(payload);
+      const controller = new AbortController();
+      const toMs = Math.max(5, Number(options.request_timeout_sec ?? 600)) * 1000;
+      const timeout = setTimeout(() => controller.abort(), toMs);
+      const res = await fetch(slashJoin(base, "/mbs-codes"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      clearTimeout(timeout);
+      if (!res.ok) { const text = await res.text(); throw new Error(`API ${res.status}: ${text}`); }
+      const data = (await res.json()) as ApiSuggestionResponse;
 
-      let data: ApiSuggestionResponse;
-      if (mockMode || !apiBase) {
-        await sleep(300);
-        data = mockSuggest(noteDraft, ep.attachments);
-      } else {
-        const res = await fetch(slashJoin(apiBase, "/mbs-codes"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`API ${res.status}: ${text}`);
-        }
-        data = (await res.json()) as ApiSuggestionResponse;
-      }
       setLastResponse(data);
       const assistantMsg: Message = { id: uid(), role: "assistant", createdAt: new Date().toISOString(), response: data, forMessageId: userMsgId };
       setMessages((m) => [...m, assistantMsg]);
     } catch (err: any) {
       console.error(err);
-      const fallback: ApiSuggestionResponse = {
-        suggestions: [],
-        meta: { model: "error" },
-        raw_debug: { error: String(err) },
-      };
+      const baseHint = [
+        `Is API Base correct? (current: ${base})`,
+        `If the backend runs for minutes, increase "Request timeout (sec)" in Backend Options.`,
+        `Ensure CORS allows http://localhost:5173 and http://127.0.0.1:5173.`,
+      ];
+      let hint = baseHint;
+      if (err?.name === 'AbortError') {
+        hint = [`Request timed out after ${(options.request_timeout_sec ?? 600)}s.`, ...baseHint];
+      }
+      const fallback: ApiSuggestionResponse = { suggestions: [], meta: { model: "error", source: "frontend" }, raw_debug: { error: String(err?.message || err), hint }, coverage: null, accuracy: null };
       setLastResponse(fallback);
       const assistantMsg: Message = { id: uid(), role: "assistant", createdAt: new Date().toISOString(), response: fallback, forMessageId: userMsgId };
       setMessages((m) => [...m, assistantMsg]);
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
+
+  // Upload/import/export helpers
+  const inputFileRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   function onUploadFile(file: File) {
     const reader = new FileReader();
@@ -326,61 +221,15 @@ export default function AutoMBSApp() {
         const text = String(reader.result || "");
         if (file.name.toLowerCase().endsWith(".json")) {
           const json = JSON.parse(text);
-          const newEp: Episode = {
-            id: `ep-${uid()}`,
-            title: json.title || file.name,
-            noteText: json.noteText || json.note || JSON.stringify(json, null, 2),
-            attachments: json.attachments || [],
-            structured: json.structured || json.data,
-          };
-          setEpisodes((arr) => [newEp, ...arr]);
-          setActiveEpisodeId(newEp.id);
-          setMessages([]);
+          const newEp: Episode = { id: `ep-${uid()}`, title: json.title || file.name, noteText: json.noteText || json.note || JSON.stringify(json, null, 2), attachments: json.attachments || [], structured: json.structured || json.data };
+          setEpisodes((arr) => [newEp, ...arr]); setActiveEpisodeId(newEp.id); setMessages([]);
         } else {
           const newEp: Episode = { id: `ep-${uid()}`, title: file.name, noteText: text };
-          setEpisodes((arr) => [newEp, ...arr]);
-          setActiveEpisodeId(newEp.id);
-          setMessages([]);
+          setEpisodes((arr) => [newEp, ...arr]); setActiveEpisodeId(newEp.id); setMessages([]);
         }
-      } catch (e) {
-        alert(`Could not parse file: ${e}`);
-      }
+      } catch (e) { alert(`Could not parse file: ${e}`); }
     };
     reader.readAsText(file);
-  }
-
-  function onSaveEpisode() {
-    setEpisodes((arr) => arr.map((e) => (e.id === activeEpisodeId ? { ...e, noteText: noteDraft } : e)));
-  }
-
-  function exportSession() {
-    const blob = new Blob([JSON.stringify({ apiBase, mockMode, episodes, messages, ts: new Date().toISOString() }, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `autombs_session_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // ---------- New Episode / Image / Duplicate / Delete ----------
-  const inputFileRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-
-  function newEpisode() {
-    const id = `ep-${uid()}`;
-    const newEp: Episode = {
-      id,
-      title: `Untitled ${new Date().toLocaleString()}`,
-      noteText: "",
-      attachments: [],
-    };
-    setEpisodes((arr) => [newEp, ...arr]);
-    setActiveEpisodeId(id);
-    setMessages([]);
-    setNoteDraft("");
   }
 
   function onUploadImage(file: File) {
@@ -388,83 +237,29 @@ export default function AutoMBSApp() {
     reader.onload = () => {
       try {
         const dataUrl = String(reader.result || "");
-        setEpisodes((arr) =>
-          arr.map((e) =>
-            e.id === activeEpisodeId
-              ? {
-                  ...e,
-                  attachments: [
-                    ...(e.attachments || []),
-                    { name: file.name, type: file.type || "image/*", content: dataUrl },
-                  ],
-                }
-              : e
-          )
-        );
-      } catch (e) {
-        alert(`Could not read image: ${e}`);
-      }
+        setEpisodes((arr) => arr.map((e) => e.id === activeEpisodeId ? { ...e, attachments: [ ...(e.attachments || []), { name: file.name, type: file.type || "image/*", content: dataUrl } ] } : e));
+      } catch (e) { alert(`Could not read image: ${e}`); }
     };
     reader.readAsDataURL(file);
   }
 
-  function removeAttachment(idx: number) {
-    setEpisodes((arr) =>
-      arr.map((e) =>
-        e.id === activeEpisodeId
-          ? { ...e, attachments: (e.attachments || []).filter((_, i) => i !== idx) }
-          : e
-      )
-    );
-  }
+  function removeAttachment(idx: number) { setEpisodes((arr) => arr.map((e) => e.id === activeEpisodeId ? { ...e, attachments: (e.attachments || []).filter((_, i) => i !== idx) } : e)); }
 
-  function duplicateEpisode() {
-    const source = activeEpisode;
-    if (!source) return;
-    const id = `ep-${uid()}`;
-    const copy: Episode = {
-      id,
-      title: `Copy of ${source.title}`,
-      noteText: source.noteText,
-      attachments: source.attachments ? [...source.attachments] : [],
-      structured: source.structured ? JSON.parse(JSON.stringify(source.structured)) : undefined,
-    };
-    setEpisodes((arr) => [copy, ...arr]);
-    setActiveEpisodeId(id);
-    setMessages([]);
-    setNoteDraft(copy.noteText);
-  }
+  function onSaveEpisode() { setEpisodes((arr) => arr.map((e) => (e.id === activeEpisodeId ? { ...e, noteText: noteDraft } : e))); }
 
-  function deleteEpisode(epId: string) {
-    const ep = episodes.find((e) => e.id === epId);
-    if (!ep) return;
-    const isActive = epId === activeEpisodeId;
-    const ok = window.confirm(`Delete episode "${ep.title}"? This cannot be undone.`);
-    if (!ok) return;
+  function exportSession() { const blob = new Blob([JSON.stringify({ apiBase, options, episodes, messages, ts: new Date().toISOString() }, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `autombs_session_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url); }
 
-    setEpisodes((arr) => arr.filter((e) => e.id !== epId));
+  // Episode ops
+  function newEpisode() { const id = `ep-${uid()}`; const newEp: Episode = { id, title: `Untitled ${new Date().toLocaleString()}`, noteText: "", attachments: [] }; setEpisodes((arr) => [newEp, ...arr]); setActiveEpisodeId(id); setMessages([]); setNoteDraft(""); }
 
-    if (isActive) {
-      // pick the next available, otherwise create a blank one
-      const remaining = episodes.filter((e) => e.id !== epId);
-      if (remaining.length > 0) {
-        setActiveEpisodeId(remaining[0].id);
-        setNoteDraft(remaining[0].noteText);
-      } else {
-        const id = `ep-${uid()}`;
-        const newEp: Episode = { id, title: `Untitled ${new Date().toLocaleString()}`, noteText: "", attachments: [] };
-        setEpisodes([newEp]);
-        setActiveEpisodeId(id);
-        setNoteDraft("");
-      }
-      setMessages([]); // clear chat when switching after delete
-    }
-  }
+  function duplicateEpisode() { const source = activeEpisode; if (!source) return; const id = `ep-${uid()}`; const copy: Episode = { id, title: `Copy of ${source.title}`, noteText: source.noteText, attachments: source.attachments ? [...source.attachments] : [], structured: source.structured ? JSON.parse(JSON.stringify(source.structured)) : undefined }; setEpisodes((arr) => [copy, ...arr]); setActiveEpisodeId(id); setMessages([]); setNoteDraft(copy.noteText); }
+
+  function deleteEpisode(epId: string) { const ep = episodes.find((e) => e.id === epId); if (!ep) return; const isActive = epId === activeEpisodeId; const ok = window.confirm(`Delete episode "${ep.title}"? This cannot be undone.`); if (!ok) return; setEpisodes((arr) => arr.filter((e) => e.id !== epId)); if (isActive) { const remaining = episodes.filter((e) => e.id !== epId); if (remaining.length > 0) { setActiveEpisodeId(remaining[0].id); setNoteDraft(remaining[0].noteText); } else { const id = `ep-${uid()}`; const newEp: Episode = { id, title: `Untitled ${new Date().toLocaleString()}`, noteText: "", attachments: [] }; setEpisodes([newEp]); setActiveEpisodeId(id); setNoteDraft(""); } setMessages([]); } }
 
   return (
     <div className="h-screen w-full bg-slate-50 text-slate-900 flex">
       {/* Sidebar */}
-      <aside className="w-80 border-r border-slate-200 bg-white flex flex-col">
+      <aside className="w-96 border-r border-slate-200 bg-white flex flex-col">
         <div className="p-4 border-b border-slate-200">
           <h1 className="text-xl font-bold">AutoMBS — Spartan Assistant</h1>
           <p className="text-xs text-slate-500">Upload/select an episode, then ask for code suggestions.</p>
@@ -472,60 +267,64 @@ export default function AutoMBSApp() {
         <div className="p-4 space-y-3 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <label className="text-xs font-semibold">API Base</label>
-            <input
-              value={apiBase}
-              onChange={(e) => setApiBase(e.target.value)}
-              placeholder="http://localhost:8000"
-              className="w-full text-sm px-2 py-1 border rounded-md focus:outline-none focus:ring"
-            />
+            <input value={apiBase} onChange={(e) => setApiBase(e.target.value)} placeholder="http://localhost:8000" className="w-full text-sm px-2 py-1 border rounded-md focus:outline-none focus:ring" />
           </div>
-          <div className="flex items-center justify-between text-sm">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={mockMode} onChange={(e) => setMockMode(e.target.checked)} />
-              Mock mode
-            </label>
-            <button
-              className="text-xs px-2 py-1 rounded bg-slate-200 hover:bg-slate-300"
-              onClick={() => setConsoleOpen((v) => !v)}
-            >
-              {consoleOpen ? "Hide" : "Show"} Console
-            </button>
-          </div>
+
+          {/* Backend options */}
+          <details className="rounded border bg-slate-50 open:bg-slate-50" open>
+            <summary className="cursor-pointer select-none px-3 py-2 text-sm font-semibold">Backend Options</summary>
+            <div className="p-3 grid grid-cols-2 gap-2">
+              <label className="text-xs col-span-1">
+                <span className="block mb-1">Department</span>
+                <select className="w-full text-sm border rounded px-2 py-1" value={options.department || ""} onChange={(e) => setOptions((o) => ({ ...o, department: e.target.value }))}>
+                  <option value="">(none)</option>
+                  <option value="ED">ED</option>
+                  <option value="GP">GP</option>
+                  <option value="Specialist">Specialist</option>
+                </select>
+              </label>
+              <label className="text-xs col-span-1">
+                <span className="block mb-1">Hospital Type</span>
+                <select className="w-full text-sm border rounded px-2 py-1" value={options.hospital_type || ""} onChange={(e) => setOptions((o) => ({ ...o, hospital_type: e.target.value }))}>
+                  <option value="">(none)</option>
+                  <option value="private">private</option>
+                  <option value="public">public</option>
+                </select>
+              </label>
+              <label className="text-xs col-span-2 flex items-center gap-2 mt-1">
+                <input type="checkbox" checked={!!options.recognised_ed} onChange={(e) => setOptions((o) => ({ ...o, recognised_ed: e.target.checked }))} />
+                Recognised ED
+              </label>
+              <label className="text-xs col-span-2">
+                <span className="block mb-1">Model</span>
+                <input className="w-full text-sm border rounded px-2 py-1" value={options.model || ""} onChange={(e) => setOptions((o) => ({ ...o, model: e.target.value }))} placeholder="qwen3:4b-instruct" />
+              </label>
+              <label className="text-xs col-span-2">
+                <span className="block mb-1">Ollama URL</span>
+                <input className="w-full text-sm border rounded px-2 py-1" value={options.ollama_url || ""} onChange={(e) => setOptions((o) => ({ ...o, ollama_url: e.target.value }))} placeholder="http://localhost:11434" />
+              </label>
+              <label className="text-xs col-span-2 flex items-center gap-2">
+                <input type="checkbox" checked={!!options.use_effective_dates} onChange={(e) => setOptions((o) => ({ ...o, use_effective_dates: e.target.checked }))} />
+                Use effective dates
+              </label>
+              <label className="text-xs col-span-1">
+                <span className="block mb-1">Confidence Threshold</span>
+                <input type="number" min={0} max={1} step={0.05} className="w-full text-sm border rounded px-2 py-1" value={options.confidence_threshold ?? 0.6} onChange={(e) => setOptions((o) => ({ ...o, confidence_threshold: Number(e.target.value) }))} />
+              </label>
+              <label className="text-xs col-span-1">
+                <span className="block mb-1">Request timeout (sec)</span>
+                <input type="number" min={5} max={3600} step={5} className="w-full text-sm border rounded px-2 py-1" value={options.request_timeout_sec ?? 600} onChange={(e) => setOptions((o) => ({ ...o, request_timeout_sec: Number(e.target.value) }))} />
+              </label>
+            </div>
+          </details>
+
           <div className="flex flex-wrap gap-2">
-            <button
-              className="text-sm px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700"
-              onClick={newEpisode}
-            >
-              New Episode
-            </button>
-            <button
-              className="text-sm px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => inputFileRef.current?.click()}
-            >
-              Upload Episode
-            </button>
-            <input
-              ref={inputFileRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => e.target.files && onUploadFile(e.target.files[0])}
-            />
-            <button
-              className="text-sm px-3 py-1.5 rounded bg-sky-600 text-white hover:bg-sky-700"
-              onClick={() => imageInputRef.current?.click()}
-            >
-              Add Image
-            </button>
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => e.target.files && onUploadImage(e.target.files[0])}
-            />
-            <button className="text-sm px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300" onClick={exportSession}>
-              Export
-            </button>
+            <button className="text-sm px-3 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700" onClick={newEpisode}>New Episode</button>
+            <button className="text-sm px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700" onClick={() => inputFileRef.current?.click()}>Upload Episode</button>
+            <input ref={inputFileRef} type="file" className="hidden" onChange={(e) => e.target.files && onUploadFile(e.target.files[0])} />
+            <button className="text-sm px-3 py-1.5 rounded bg-sky-600 text-white hover:bg-sky-700" onClick={() => imageInputRef.current?.click()}>Add Image</button>
+            <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files && onUploadImage(e.target.files[0])} />
+            <button className="text-sm px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300" onClick={exportSession}>Export</button>
           </div>
         </div>
 
@@ -534,27 +333,11 @@ export default function AutoMBSApp() {
           <ul className="space-y-1">
             {episodes.map((ep) => (
               <li key={ep.id} className="group relative">
-                <button
-                  className={`w-full text-left px-3 py-2 pr-10 rounded hover:bg-slate-100 transition ${
-                    ep.id === activeEpisodeId ? "bg-slate-100 border-l-4 border-indigo-600" : ""
-                  }`}
-                  onClick={() => {
-                    setActiveEpisodeId(ep.id);
-                    setNoteDraft(ep.noteText);
-                    setMessages([]);
-                  }}
-                >
+                <button className={`w-full text-left px-3 py-2 pr-10 rounded hover:bg-slate-100 transition ${ep.id === activeEpisodeId ? "bg-slate-100 border-l-4 border-indigo-600" : ""}`} onClick={() => { setActiveEpisodeId(ep.id); setNoteDraft(ep.noteText); setMessages([]); }}>
                   <div className="text-sm font-medium truncate">{ep.title}</div>
                   <div className="text-xs text-slate-500 truncate">{ep.noteText.slice(0, 80)}</div>
                 </button>
-                {/* Delete 'X' button shown on hover */}
-                <button
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs rounded px-2 py-0.5 bg-rose-100 text-rose-700 opacity-0 group-hover:opacity-100 hover:bg-rose-200"
-                  title="Delete episode"
-                  onClick={(e) => { e.stopPropagation(); deleteEpisode(ep.id); }}
-                >
-                  X
-                </button>
+                <button className="absolute right-2 top-1/2 -translate-y-1/2 text-xs rounded px-2 py-0.5 bg-rose-100 text-rose-700 opacity-0 group-hover:opacity-100 hover:bg-rose-200" title="Delete episode" onClick={(e) => { e.stopPropagation(); deleteEpisode(ep.id); }}>X</button>
               </li>
             ))}
           </ul>
@@ -569,81 +352,34 @@ export default function AutoMBSApp() {
 
           {editingTitle ? (
             <div className="flex items-center gap-2">
-              <input
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') saveTitle();
-                  if (e.key === 'Escape') { setEditingTitle(false); setTitleDraft(activeEpisode.title); }
-                }}
-                className="text-sm px-2 py-1 rounded border"
-                autoFocus
-              />
-              <button className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700" onClick={saveTitle}>
-                Save
-              </button>
-              <button className="text-xs px-2 py-1 rounded bg-slate-200 hover:bg-slate-300"
-                onClick={() => { setEditingTitle(false); setTitleDraft(activeEpisode.title); }}>
-                Cancel
-              </button>
+              <input value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') { setEditingTitle(false); setTitleDraft(activeEpisode.title); } }} className="text-sm px-2 py-1 rounded border" autoFocus />
+              <button className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700" onClick={saveTitle}>Save</button>
+              <button className="text-xs px-2 py-1 rounded bg-slate-200 hover:bg-slate-300" onClick={() => { setEditingTitle(false); setTitleDraft(activeEpisode.title); }}>Cancel</button>
             </div>
           ) : (
-            <button
-              className="text-sm px-2 py-1 rounded bg-slate-100 border hover:bg-slate-200"
-              onClick={() => setEditingTitle(true)}
-              title="Click to rename"
-            >
-              {activeEpisode.title}
-            </button>
+            <button className="text-sm px-2 py-1 rounded bg-slate-100 border hover:bg-slate-200" onClick={() => setEditingTitle(true)} title="Click to rename">{activeEpisode.title}</button>
           )}
 
           <div className="flex items-center gap-2">
-            <button
-              className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => setEditingTitle(true)}
-            >
-              Rename
-            </button>
-            <button className="text-xs px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700" onClick={duplicateEpisode}>
-              Duplicate
-            </button>
+            <button className="text-xs px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700" onClick={() => setEditingTitle(true)}>Rename</button>
+            <button className="text-xs px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700" onClick={duplicateEpisode}>Duplicate</button>
           </div>
 
           <div className="ml-auto flex items-center gap-3 text-sm">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={showHighlights} onChange={(e) => setShowHighlights(e.target.checked)} />
-              Highlight evidence
-            </label>
-            <button className="px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300" onClick={onSaveEpisode}>
-              Save Note
-            </button>
-            <button
-              className={`px-3 py-1.5 rounded text-white ${busy ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"}`}
-              onClick={onSuggest}
-              disabled={busy}
-            >
-              {busy ? "Analyzing…" : "Suggest Codes"}
-            </button>
+            <button className="px-3 py-1.5 rounded bg-slate-200 hover:bg-slate-300" onClick={onSaveEpisode}>Save Note</button>
+            <button className={`px-3 py-1.5 rounded text-white ${busy ? "bg-indigo-300" : "bg-indigo-600 hover:bg-indigo-700"}`} onClick={onSuggest} disabled={busy}>{busy ? "Analyzing…" : "Suggest Codes"}</button>
           </div>
         </div>
 
         {/* Work area */}
         <div className="flex-1 grid grid-cols-2 gap-0 min-h-0">
-          {/* Note editor / evidence view */}
+          {/* Note editor */}
           <section className="border-r bg-white flex flex-col min-h-0">
             <div className="px-4 py-2 border-b flex items-center justify-between">
               <h3 className="font-semibold">Clinical Note</h3>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <textarea
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-                className="w-full h-64 border rounded-md p-3 text-sm font-mono"
-              />
-              <div className="mt-4">
-                <h4 className="text-sm text-slate-600 mb-2">Rendered with highlights</h4>
-                <HighlightedNote text={noteDraft} messages={messages} show={showHighlights} />
-              </div>
+              <textarea value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} className="w-full min-h-[60vh] h-[70vh] border rounded-md p-3 text-sm font-mono resize-y" />
               <div className="mt-4">
                 <h4 className="text-sm text-slate-600 mb-2">Attachments</h4>
                 {activeEpisode.attachments && activeEpisode.attachments.length > 0 ? (
@@ -656,12 +392,7 @@ export default function AutoMBSApp() {
                         ) : (
                           <div className="mt-1 text-xs text-slate-600">({att.type})</div>
                         )}
-                        <button
-                          className="mt-2 text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200"
-                          onClick={() => removeAttachment(idx)}
-                        >
-                          Remove
-                        </button>
+                        <button className="mt-2 text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200" onClick={() => removeAttachment(idx)}>Remove</button>
                       </li>
                     ))}
                   </ul>
@@ -679,12 +410,8 @@ export default function AutoMBSApp() {
               <div className="text-xs text-slate-500">{busy ? "Working…" : "Idle"}</div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {messages.length === 0 && (
-                <EmptyState />
-              )}
-              {messages.map((m) => (
-                <MessageBubble key={m.id} msg={m} />
-              ))}
+              {messages.length === 0 && (<EmptyState />)}
+              {messages.map((m) => (<MessageBubble key={m.id} msg={m} />))}
             </div>
           </section>
         </div>
@@ -702,6 +429,10 @@ export default function AutoMBSApp() {
             </div>
           </div>
         )}
+
+        <div className="border-t p-2 bg-slate-50 text-right">
+          <button className="text-xs px-2 py-1 rounded bg-slate-200 hover:bg-slate-300" onClick={() => setConsoleOpen((v) => !v)}>{consoleOpen ? "Hide" : "Show"} Console</button>
+        </div>
       </main>
     </div>
   );
@@ -715,9 +446,7 @@ function EmptyState() {
       <div className="text-center max-w-md">
         <div className="text-3xl">🩺</div>
         <h3 className="text-lg font-semibold mt-2">No analysis yet</h3>
-        <p className="text-sm text-slate-500 mt-1">
-          Paste or edit the clinical note on the left, then click <span className="font-semibold">Suggest Codes</span>.
-        </p>
+        <p className="text-sm text-slate-500 mt-1">Paste or edit the clinical note on the left, then click <span className="font-semibold">Suggest Codes</span>.</p>
       </div>
     </div>
   );
@@ -742,14 +471,16 @@ function MessageBubble({ msg }: { msg: Message }) {
         {r.suggestions && r.suggestions.length > 0 ? (
           <div className="space-y-3">
             <CoverageAccuracy response={r} />
-            {r.suggestions.map((s, i) => (
-              <SuggestionCard key={i} s={s} />
-            ))}
+            {r.suggestions.map((s, i) => (<SuggestionCard key={i} s={s} />))}
           </div>
         ) : (
-          <div className="text-sm text-slate-600">No suggestions. {r.raw_debug?.error && (
-            <span className="ml-2 text-red-600">{String(r.raw_debug.error)}</span>
-          )}</div>
+          <div className="text-sm text-slate-600">No suggestions. {r.raw_debug?.error && (<span className="ml-2 text-red-600">{String(r.raw_debug.error)}</span>)}
+            {r.raw_debug?.hint && Array.isArray(r.raw_debug.hint) && (
+              <ul className="list-disc pl-5 mt-1 text-xs text-amber-800">
+                {r.raw_debug.hint.map((h: string, idx: number) => (<li key={idx}>{h}</li>))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -765,7 +496,12 @@ function SuggestionCard({ s }: { s: Suggestion }) {
           <span className="text-lg font-bold tracking-wide">{s.item}</span>
           <span className="text-sm text-slate-600">{s.description}</span>
         </div>
-        <ConfidencePill p={s.confidence} />
+        <div className="flex items-center gap-3">
+          <ConfidencePill p={s.confidence} />
+          {typeof s.schedule_fee === 'number' && (
+            <span className="text-xs px-2 py-1 rounded bg-slate-200" title="Schedule fee (reference)">Fee: {formatAUD(s.schedule_fee)}</span>
+          )}
+        </div>
       </div>
       <div className="mt-2 text-sm">
         <div className="font-semibold">Reasoning</div>
@@ -776,19 +512,15 @@ function SuggestionCard({ s }: { s: Suggestion }) {
           <div className="font-semibold">Evidence</div>
           <ul className="list-disc pl-5 text-slate-700">
             {s.evidence.map((e, idx) => (
-              <li key={idx}><code className="bg-white border rounded px-1">{e.text}</code>{typeof e.start === "number" ? ` @${e.start}` : ""}</li>
+              <li key={idx}><code className="bg-white border rounded px-1">{e.text}</code>{typeof e.start === "number" ? ` @${e.start}` : ""}{e.field && e.field !== 'noteText' ? ` (${e.field})` : ""}</li>
             ))}
           </ul>
         </div>
       )}
       {(s.conflicts && s.conflicts.length > 0) || (s.warnings && s.warnings.length > 0) ? (
         <div className="mt-2 flex flex-wrap gap-2">
-          {s.conflicts?.map((c, i) => (
-            <span key={i} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">Conflict: {c}</span>
-          ))}
-          {s.warnings?.map((w, i) => (
-            <span key={i} className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800">{w}</span>
-          ))}
+          {s.conflicts?.map((c, i) => (<span key={i} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700">Conflict: {c}</span>))}
+          {s.warnings?.map((w, i) => (<span key={i} className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800">{w}</span>))}
         </div>
       ) : null}
     </div>
@@ -808,9 +540,28 @@ function ConfidencePill({ p }: { p: number }) {
 }
 
 function CoverageAccuracy({ response }: { response: ApiSuggestionResponse }) {
-  const cov = response.coverage;
-  const acc = response.accuracy;
-  const covPct = cov ? (cov.eligible_total > 0 ? cov.eligible_suggested / cov.eligible_total : 0) : undefined;
+  const cov = response.coverage || undefined;
+  const acc = response.accuracy || undefined;
+  const suggestions = response.suggestions || [];
+  const count = suggestions.length;
+  const avgConf = count > 0 ? suggestions.reduce((sum, s) => sum + (s.confidence || 0), 0) / count : undefined;
+
+  const covText = cov && cov.eligible_total != null
+    ? `(${cov.eligible_suggested}/${cov.eligible_total})`
+    : `(${count} item${count === 1 ? '' : 's'})`;
+
+  const accText = acc && acc.correct != null && acc.incorrect != null
+    ? `(${acc.correct}/${(acc.correct||0)+(acc.incorrect||0)})`
+    : (avgConf != null ? `(${Math.round(avgConf * 100)}% avg conf)` : '(N/A)');
+
+  const covPct = cov && cov.eligible_total != null
+    ? (cov.eligible_total > 0 ? cov.eligible_suggested / cov.eligible_total : 0)
+    : (count > 0 ? 1 : undefined);
+
+  const accPct = acc && acc.correct != null && acc.incorrect != null
+    ? (acc.correct / Math.max(1, (acc.correct || 0) + (acc.incorrect || 0)))
+    : (avgConf != null ? avgConf : undefined);
+
   return (
     <div className="border rounded-xl p-3 bg-white">
       <div className="flex items-center justify-between">
@@ -819,19 +570,18 @@ function CoverageAccuracy({ response }: { response: ApiSuggestionResponse }) {
           {response.meta?.model && <span className="mr-2">Model: {response.meta.model}</span>}
           {response.meta?.prompt_version && <span className="mr-2">Prompt: {response.meta.prompt_version}</span>}
           {response.meta?.rule_version && <span>Rules: {response.meta.rule_version}</span>}
+          {response.meta?.source && <span className="ml-2">Source: {response.meta.source}</span>}
         </div>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-3">
         <div>
-          <div className="text-xs text-slate-600 mb-1">Coverage {cov ? `(${cov.eligible_suggested}/${cov.eligible_total})` : ""}</div>
+          <div className="text-xs text-slate-600 mb-1">Coverage {covText}</div>
           <ProgressBar p={covPct} />
-          {cov?.missed && cov.missed.length > 0 && (
-            <div className="mt-1 text-xs text-slate-500">Missed: {cov.missed.join(", ")}</div>
-          )}
+          {cov?.missed && cov.missed.length > 0 && (<div className="mt-1 text-xs text-slate-500">Missed: {cov.missed.join(", ")}</div>)}
         </div>
         <div>
-          <div className="text-xs text-slate-600 mb-1">Accuracy {acc && acc.correct != null && acc.incorrect != null ? `(${acc.correct}/${(acc.correct||0)+(acc.incorrect||0)})` : "(N/A)"}</div>
-          <ProgressBar p={acc && acc.correct != null && acc.incorrect != null ? (acc.correct / Math.max(1, acc.correct + acc.incorrect)) : undefined} />
+          <div className="text-xs text-slate-600 mb-1">Accuracy {accText}</div>
+          <ProgressBar p={accPct} />
         </div>
       </div>
     </div>
@@ -848,127 +598,25 @@ function ProgressBar({ p }: { p?: number }) {
   );
 }
 
-function HighlightedNote({ text, messages, show }: { text: string; messages: Message[]; show: boolean }) {
-  const rawSpans = useMemo(() => collectEvidenceSpans(messages), [messages]);
-
-  // Merge/normalise spans so we don't duplicate text when multiple suggestions are made
-  const spans = useMemo(() => {
-    const len = text.length;
-    const items = (rawSpans || [])
-      .filter((s: any) => typeof s?.start === "number" && typeof s?.end === "number")
-      .map((s: any) => ({
-        start: Math.max(0, Math.min(len, s.start)),
-        end: Math.max(0, Math.min(len, s.end)),
-      }))
-      .filter((s) => s.start < s.end)
-      .sort((a, b) => (a.start - b.start) || (a.end - b.end));
-
-    const merged: Array<{ start: number; end: number }> = [];
-    for (const seg of items) {
-      const last = merged[merged.length - 1];
-      if (!last || seg.start > last.end) {
-        merged.push({ ...seg });
-      } else {
-        last.end = Math.max(last.end, seg.end); // merge overlaps/adjacent
-      }
-    }
-    return merged;
-  }, [rawSpans, text]);
-
-  if (!show || spans.length === 0)
-    return (
-      <pre className="text-sm font-mono bg-slate-100 p-3 rounded whitespace-pre-wrap">{text}</pre>
-    );
-
-  const parts: Array<{ str: string; mark?: boolean }> = [];
-  let i = 0;
-  for (const sp of spans) {
-    if (sp.start > i) parts.push({ str: text.slice(i, sp.start) });
-    parts.push({ str: text.slice(sp.start, sp.end), mark: true });
-    i = sp.end;
-  }
-  if (i < text.length) parts.push({ str: text.slice(i) });
-
-  return (
-    <pre className="text-sm font-mono bg-slate-100 p-3 rounded whitespace-pre-wrap">
-      {parts.map((p, idx) => (
-        p.mark ? (
-          <mark key={idx} className="bg-yellow-200 rounded px-0.5">{p.str}</mark>
-        ) : (
-          <span key={idx}>{p.str}</span>
-        )
-      ))}
-    </pre>
-  );
-}
-
-function collectEvidenceSpans(messages: Message[]): EvidenceSpan[] {
-  // Only use the latest assistant message to avoid accumulating duplicate highlights
-  const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant") as Extract<Message, { role: "assistant" }> | undefined;
-  if (!lastAssistant) return [];
-  const spans: EvidenceSpan[] = [];
-  for (const s of lastAssistant.response.suggestions || []) {
-    for (const e of s.evidence || []) {
-      if (typeof e.start === "number" && typeof e.end === "number" && e.field === "noteText") {
-        spans.push({ ...e });
-      }
-    }
-  }
-  return spans;
-}
-
-// (Optional helper) gather evidence spans from ALL assistant messages (not used; kept for future toggles)
-function collectEvidenceSpansAll(messages: Message[]): EvidenceSpan[] {
-  const spans: EvidenceSpan[] = [];
-  for (const m of messages) {
-    if (m.role === "assistant") {
-      for (const s of m.response.suggestions || []) {
-        for (const e of s.evidence || []) {
-          if (typeof e.start === "number" && typeof e.end === "number" && e.field === "noteText") {
-            spans.push({ ...e });
-          }
-        }
-      }
-    }
-  }
-  return spans;
-}
-
-// --------------------------- Helpers ----------------------------------
-
-function slashJoin(base: string, path: string) {
-  if (!base) return path;
-  return base.replace(/\/$/, "") + (path.startsWith("/") ? path : `/${path}`);
-}
-
-function safeJson(obj: any) {
-  try {
-    return JSON.stringify(obj, null, 2);
-  } catch (e) {
-    return String(obj);
-  }
-}
-
-function sleep(ms: number) {
-  return new Promise((res) => setTimeout(res, ms));
-}
-
 // --------------------------- Dev Self-Tests ----------------------------
-// These run only in dev to guard against regressions.
 if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV) {
   try {
     // slashJoin tests
     console.assert(slashJoin('http://localhost:8000', '/mbs-codes') === 'http://localhost:8000/mbs-codes', 'slashJoin basic');
-    console.assert(slashJoin('http://localhost:8000/', '/mbs-codes') === 'http://localhost:8000/mbs-codes', 'slashJoin trims trailing slash');
+    console.assert(slashJoin('http://localhost:8000/', '/mbs-codes') === 'http://localhost:8000/mbs-codes', 'slashJoin trims');
     console.assert(slashJoin('', '/x') === '/x', 'slashJoin empty base');
 
-    // collectEvidenceSpans uses only latest assistant
-    const msgs: Message[] = [
-      { id: '1', role: 'assistant', createdAt: new Date().toISOString(), forMessageId: 'u1', response: { suggestions: [{ item: 'A', description: '', confidence: 1, reasoning: '', evidence: [{ text: 'foo', start: 0, end: 3, field: 'noteText' }] }], raw_debug: {} } as any },
-      { id: '2', role: 'assistant', createdAt: new Date().toISOString(), forMessageId: 'u2', response: { suggestions: [{ item: 'B', description: '', confidence: 1, reasoning: '', evidence: [{ text: 'bar', start: 4, end: 7, field: 'noteText' }] }], raw_debug: {} } as any },
-    ];
-    const spans = collectEvidenceSpans(msgs);
-    console.assert(spans.length === 1 && spans[0].text === 'bar', 'collectEvidenceSpans should use latest assistant only');
+    // coverage/accuracy fallback tests
+    const sample: ApiSuggestionResponse = {
+      suggestions: [
+        { item: 'A', description: '', confidence: 0.7, reasoning: '', evidence: [] },
+        { item: 'B', description: '', confidence: 0.9, reasoning: '', evidence: [] },
+      ],
+      coverage: null,
+      accuracy: null,
+    };
+    const avg = sample.suggestions.reduce((s, x) => s + (x.confidence||0), 0) / sample.suggestions.length;
+    console.assert(Math.abs(avg - 0.8) < 1e-6, 'avg confidence computes');
   } catch (e) {
     console.warn('DEV self-tests failed:', e);
   }

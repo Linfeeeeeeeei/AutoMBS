@@ -83,6 +83,7 @@ Return ONLY JSON with this shape:
 {
   "item_number": "<same as input>",
   "item_description": "<candidate.description_original>",
+  "schedule_fee": "<candidate.schedule_fee>"
   "applicable": true|false,
   "confidence": 0.0-1.0,
   "rationale": "one or two sentences, concise",
