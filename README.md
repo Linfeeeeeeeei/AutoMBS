@@ -4,7 +4,7 @@ This repo contains a minimal end‑to‑end implementation of **AutoMBS**:
 - A FastAPI backend that turns a clinical note into **MBS item suggestions**.
 - A Vite/React frontend that lets you paste notes, set a few options, and view results with evidence.
 
-The system focuses on the **Emergency Department** (ED) slice of MBS (items 5001–5036 and selected 14xxx). It is designed so you can later swap prompts, models, and knowledge bases without changing the HTTP contract.
+The first version of the system focuses on the **Emergency Department** (ED) slice of MBS (items 5001–5036 and selected 14xxx). KB has completed for other MBS departments (full KB file is under backend/app/autombs/KB).
 
 ---
 
