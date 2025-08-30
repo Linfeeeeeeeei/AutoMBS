@@ -1,4 +1,5 @@
 # AutoMBS — AI‑Powered MBS Coding Assistant
+<img width="1903" height="952" alt="Screenshot from 2025-08-31 00-26-44" src="https://github.com/user-attachments/assets/c026b7fa-52e1-42d2-bd65-fcb17ae89c23" />
 
 This repo contains a minimal end‑to‑end implementation of **AutoMBS**:
 - A FastAPI backend that turns a clinical note into **MBS item suggestions**.
